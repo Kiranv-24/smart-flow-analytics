@@ -2,7 +2,10 @@
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Play, Square, AlertTriangle, Camera } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Play, Square, AlertTriangle, Camera, Settings } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface Detection {
   class: string;
@@ -18,8 +21,7 @@ interface WebcamCaptureProps {
   onStatusChange: (isActive: boolean) => void;
 }
 
-const ROBOFLOW_API_KEY = "qDrma4OYH0YLt5Wh8iEp";
-const MODEL_ENDPOINT = "toy-vehicle-detection-te7wp/3";
+const API_BASE_URL = "http://localhost:8000";
 
 export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptureProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -28,6 +30,13 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
   const [error, setError] = useState<string>("");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [detectionInterval, setDetectionInterval] = useState<NodeJS.Timeout | null>(null);
+  
+  // Detection parameters matching the image
+  const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
+  const [overlapThreshold, setOverlapThreshold] = useState(0.5);
+  const [opacityThreshold, setOpacityThreshold] = useState(0.75);
+  const [labelDisplayMode, setLabelDisplayMode] = useState("Draw Confidence");
+  const [processingTime, setProcessingTime] = useState<number>(0);
 
   const startWebcam = async () => {
     try {
@@ -35,7 +44,7 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
         video: { 
           width: { ideal: 640 },
           height: { ideal: 480 },
-          frameRate: { ideal: 15 } // Optimized FPS for performance
+          frameRate: { ideal: 30 } // Increased FPS for better performance
         }
       });
       
@@ -49,8 +58,8 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
       onStatusChange(true);
       setError("");
       
-      // Start detection loop
-      const interval = setInterval(performDetection, 200); // 5 FPS detection rate
+      // Start detection loop with optimized interval
+      const interval = setInterval(performDetection, 100); // 10 FPS detection rate
       setDetectionInterval(interval);
       
     } catch (err) {
@@ -92,22 +101,28 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
 
     // Convert canvas to base64
     const imageData = canvas.toDataURL('image/jpeg', 0.8);
-    const base64Data = imageData.split(',')[1];
 
     try {
-      const response = await fetch(`https://detect.roboflow.com/${MODEL_ENDPOINT}?api_key=${ROBOFLOW_API_KEY}`, {
+      const response = await fetch(`${API_BASE_URL}/detect_frame`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Type': 'application/json',
         },
-        body: base64Data
+        body: JSON.stringify({
+          image: imageData,
+          confidence_threshold: confidenceThreshold,
+          overlap_threshold: overlapThreshold
+        })
       });
 
       const result = await response.json();
       
-      if (result.predictions) {
+      if (result.success && result.predictions) {
         onDetectionUpdate(result.predictions);
+        setProcessingTime(result.processing_time || 0);
         drawDetections(ctx, result.predictions, video.videoWidth, video.videoHeight);
+      } else {
+        console.warn("Detection failed:", result.error);
       }
     } catch (err) {
       console.error("Detection error:", err);
@@ -123,6 +138,9 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
       ctx.drawImage(videoRef.current, 0, 0, width, height);
     }
 
+    // Apply opacity for overlay
+    ctx.globalAlpha = opacityThreshold;
+
     // Draw bounding boxes and labels
     predictions.forEach((prediction) => {
       const { x, y, width: boxWidth, height: boxHeight, class: className, confidence } = prediction;
@@ -131,23 +149,41 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
       const boxX = x - boxWidth / 2;
       const boxY = y - boxHeight / 2;
       
+      // Color coding for different vehicle types
+      let color = '#00ff00'; // Default green
+      if (className.toLowerCase().includes('emergency')) {
+        color = '#ff0000'; // Red for emergency vehicles
+      } else if (className.toLowerCase().includes('truck')) {
+        color = '#ffff00'; // Yellow for trucks
+      } else if (className.toLowerCase().includes('car')) {
+        color = '#00ffff'; // Cyan for cars
+      }
+      
       // Draw bounding box
-      ctx.strokeStyle = '#00ff00';
+      ctx.strokeStyle = color;
       ctx.lineWidth = 3;
       ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
       
-      // Draw label background
-      const label = `${className} ${Math.round(confidence * 100)}%`;
+      // Draw label based on display mode
+      let label = className;
+      if (labelDisplayMode === "Draw Confidence") {
+        label = `${className} ${Math.round(confidence * 100)}%`;
+      }
+      
       ctx.font = '16px Arial';
       const textWidth = ctx.measureText(label).width;
       
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      // Draw label background
+      ctx.fillStyle = `${color}CC`; // Semi-transparent
       ctx.fillRect(boxX, boxY - 25, textWidth + 10, 25);
       
       // Draw label text
-      ctx.fillStyle = '#00ff00';
+      ctx.fillStyle = '#000000';
       ctx.fillText(label, boxX + 5, boxY - 5);
     });
+
+    // Reset opacity
+    ctx.globalAlpha = 1.0;
   };
 
   useEffect(() => {
@@ -164,6 +200,79 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
           <AlertDescription className="text-white">{error}</AlertDescription>
         </Alert>
       )}
+
+      {/* Detection Parameters Card */}
+      <Card className="bg-black/40 backdrop-blur-md border-white/20">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center">
+            <Settings className="h-5 w-5 mr-2" />
+            Detection Parameters
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label className="text-white text-sm mb-2 block">
+              Confidence Threshold: {Math.round(confidenceThreshold * 100)}%
+            </label>
+            <Slider
+              value={[confidenceThreshold]}
+              onValueChange={(value) => setConfidenceThreshold(value[0])}
+              min={0}
+              max={1}
+              step={0.01}
+              className="w-full"
+            />
+          </div>
+          
+          <div>
+            <label className="text-white text-sm mb-2 block">
+              Overlap Threshold: {Math.round(overlapThreshold * 100)}
+            </label>
+            <Slider
+              value={[overlapThreshold]}
+              onValueChange={(value) => setOverlapThreshold(value[0])}
+              min={0}
+              max={1}
+              step={0.01}
+              className="w-full"
+            />
+          </div>
+          
+          <div>
+            <label className="text-white text-sm mb-2 block">
+              Opacity Threshold: {Math.round(opacityThreshold * 100)}%
+            </label>
+            <Slider
+              value={[opacityThreshold]}
+              onValueChange={(value) => setOpacityThreshold(value[0])}
+              min={0}
+              max={1}
+              step={0.01}
+              className="w-full"
+            />
+          </div>
+          
+          <div>
+            <label className="text-white text-sm mb-2 block">Label Display Mode:</label>
+            <Select value={labelDisplayMode} onValueChange={setLabelDisplayMode}>
+              <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Draw Confidence">Draw Confidence</SelectItem>
+                <SelectItem value="Class Only">Class Only</SelectItem>
+                <SelectItem value="Hidden">Hidden</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {processingTime > 0 && (
+            <div className="text-purple-200 text-sm">
+              Processing Time: {(processingTime * 1000).toFixed(1)}ms
+            </div>
+          )}
+        </CardContent>
+      </Card>
       
       <div className="relative bg-black rounded-lg overflow-hidden">
         <video
