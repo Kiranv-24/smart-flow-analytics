@@ -1,4 +1,3 @@
-
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -46,7 +45,7 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
     try {
       const response = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
-        timeout: 5000
+        signal: AbortSignal.timeout(5000)
       });
       
       if (response.ok) {
