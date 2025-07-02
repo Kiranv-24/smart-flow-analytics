@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Play, Square, AlertTriangle, Camera, Settings } from "lucide-react";
+import { Play, Square, AlertTriangle, Camera, Settings, Wifi, WifiOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface Detection {
@@ -30,21 +30,53 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
   const [error, setError] = useState<string>("");
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [detectionInterval, setDetectionInterval] = useState<NodeJS.Timeout | null>(null);
+  const [apiConnected, setApiConnected] = useState(false);
+  const [isCheckingApi, setIsCheckingApi] = useState(false);
   
-  // Detection parameters matching the image
+  // Detection parameters
   const [confidenceThreshold, setConfidenceThreshold] = useState(0.5);
   const [overlapThreshold, setOverlapThreshold] = useState(0.5);
   const [opacityThreshold, setOpacityThreshold] = useState(0.75);
   const [labelDisplayMode, setLabelDisplayMode] = useState("Draw Confidence");
   const [processingTime, setProcessingTime] = useState<number>(0);
 
+  // Check API connection
+  const checkApiConnection = async () => {
+    setIsCheckingApi(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/health`, {
+        method: 'GET',
+        timeout: 5000
+      });
+      
+      if (response.ok) {
+        setApiConnected(true);
+        setError("");
+      } else {
+        setApiConnected(false);
+        setError("Backend API is not responding correctly");
+      }
+    } catch (err) {
+      setApiConnected(false);
+      setError("Cannot connect to backend API. Make sure the Python server is running on http://localhost:8000");
+      console.error("API connection error:", err);
+    } finally {
+      setIsCheckingApi(false);
+    }
+  };
+
   const startWebcam = async () => {
+    if (!apiConnected) {
+      setError("Please ensure the backend API is running before starting detection");
+      return;
+    }
+
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { 
           width: { ideal: 640 },
           height: { ideal: 480 },
-          frameRate: { ideal: 30 } // Increased FPS for better performance
+          frameRate: { ideal: 30 }
         }
       });
       
@@ -58,8 +90,8 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
       onStatusChange(true);
       setError("");
       
-      // Start detection loop with optimized interval
-      const interval = setInterval(performDetection, 100); // 10 FPS detection rate
+      // Start detection loop
+      const interval = setInterval(performDetection, 500); // Slower interval for testing
       setDetectionInterval(interval);
       
     } catch (err) {
@@ -84,7 +116,7 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
   };
 
   const performDetection = async () => {
-    if (!videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current || !apiConnected) return;
 
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -112,8 +144,13 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
           image: imageData,
           confidence_threshold: confidenceThreshold,
           overlap_threshold: overlapThreshold
-        })
+        }),
+        signal: AbortSignal.timeout(10000) // 10 second timeout
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const result = await response.json();
       
@@ -126,6 +163,10 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
       }
     } catch (err) {
       console.error("Detection error:", err);
+      if (err instanceof TypeError && err.message.includes('NetworkError')) {
+        setApiConnected(false);
+        setError("Lost connection to backend API");
+      }
     }
   };
 
@@ -187,6 +228,7 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
   };
 
   useEffect(() => {
+    checkApiConnection();
     return () => {
       stopWebcam();
     };
@@ -194,6 +236,23 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
 
   return (
     <div className="space-y-4">
+      {/* API Connection Status */}
+      <Alert className={`${apiConnected ? 'bg-green-900/50 border-green-500' : 'bg-red-900/50 border-red-500'}`}>
+        {apiConnected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+        <AlertDescription className="text-white flex items-center justify-between">
+          <span>Backend API: {apiConnected ? 'Connected' : 'Disconnected'}</span>
+          <Button 
+            onClick={checkApiConnection} 
+            disabled={isCheckingApi}
+            size="sm"
+            variant="outline"
+            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
+          >
+            {isCheckingApi ? 'Checking...' : 'Test Connection'}
+          </Button>
+        </AlertDescription>
+      </Alert>
+
       {error && (
         <Alert className="bg-red-900/50 border-red-500">
           <AlertTriangle className="h-4 w-4" />
@@ -226,7 +285,7 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
           
           <div>
             <label className="text-white text-sm mb-2 block">
-              Overlap Threshold: {Math.round(overlapThreshold * 100)}
+              Overlap Threshold: {Math.round(overlapThreshold * 100)}%
             </label>
             <Slider
               value={[overlapThreshold]}
@@ -298,7 +357,11 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
       
       <div className="flex gap-2">
         {!isStreaming ? (
-          <Button onClick={startWebcam} className="bg-green-600 hover:bg-green-700">
+          <Button 
+            onClick={startWebcam} 
+            className="bg-green-600 hover:bg-green-700"
+            disabled={!apiConnected}
+          >
             <Play className="h-4 w-4 mr-2" />
             Start Detection
           </Button>
