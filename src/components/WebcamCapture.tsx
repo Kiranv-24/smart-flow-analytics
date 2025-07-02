@@ -2,7 +2,7 @@
 import { useRef, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Play, Square, AlertTriangle } from "lucide-react";
+import { Play, Square, AlertTriangle, Camera } from "lucide-react";
 
 interface Detection {
   class: string;
@@ -27,7 +27,7 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string>("");
   const [stream, setStream] = useState<MediaStream | null>(null);
-  const [detectionInterval, setDetectionInterval] = useState<number | null>(null);
+  const [detectionInterval, setDetectionInterval] = useState<NodeJS.Timeout | null>(null);
 
   const startWebcam = async () => {
     try {
