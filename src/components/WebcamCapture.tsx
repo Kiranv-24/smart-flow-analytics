@@ -1,8 +1,10 @@
+
 import { useRef, useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, Camera, Settings, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, Camera, Settings, Wifi, WifiOff, Play, Square } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface Detection {
