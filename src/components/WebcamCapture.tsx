@@ -1,9 +1,8 @@
 import { useRef, useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Play, Square, AlertTriangle, Camera, Settings, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, Camera, Settings, Wifi, WifiOff } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface Detection {
@@ -16,13 +15,14 @@ interface Detection {
 }
 
 interface WebcamCaptureProps {
+  globalDetectionActive: boolean;
   onDetectionUpdate: (predictions: Detection[]) => void;
   onStatusChange: (isActive: boolean) => void;
 }
 
 const API_BASE_URL = "http://localhost:8000";
 
-export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptureProps) => {
+export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStatusChange }: WebcamCaptureProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -39,6 +39,15 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
   const [processingTime, setProcessingTime] = useState<number>(0);
 
   const [recentDetections, setRecentDetections] = useState<{ detection: Detection; timestamp: number }[]>([]);
+
+  // Handle global detection state changes
+  useEffect(() => {
+    if (globalDetectionActive && !isStreaming) {
+      startWebcam();
+    } else if (!globalDetectionActive && isStreaming) {
+      stopWebcam();
+    }
+  }, [globalDetectionActive]);
 
   const checkApiConnection = async () => {
     setIsCheckingApi(true);
@@ -263,15 +272,6 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
         {apiConnected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
         <AlertDescription className="text-white flex items-center justify-between">
           <span>Backend API: {apiConnected ? 'Connected' : 'Disconnected'}</span>
-          <Button
-            onClick={checkApiConnection}
-            disabled={isCheckingApi}
-            size="sm"
-            variant="outline"
-            className="bg-white/10 border-white/20 text-white hover:bg-white/20"
-          >
-            {isCheckingApi ? 'Checking...' : 'Test Connection'}
-          </Button>
         </AlertDescription>
       </Alert>
 
@@ -336,7 +336,7 @@ export const WebcamCapture = ({ onDetectionUpdate, onStatusChange }: WebcamCaptu
           <div className="absolute inset-0 flex items-center justify-center bg-black/50">
             <div className="text-center text-white">
               <Camera className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>Click Start to begin detection</p>
+              <p>{globalDetectionActive ? "Starting detection..." : "No Camera Detection"}</p>
             </div>
           </div>
         )}

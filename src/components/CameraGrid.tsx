@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WebcamCapture } from "./WebcamCapture";
-import { Maximize, Minimize, Camera, Grid3X3, Monitor } from "lucide-react";
+import { Maximize, Minimize, Camera, Grid3X3, Monitor, Play, Square } from "lucide-react";
 
 interface Detection {
   class: string;
@@ -26,6 +26,7 @@ interface CameraData {
 export const CameraGrid = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
   const [fullscreenCamera, setFullscreenCamera] = useState<number | null>(null);
+  const [globalDetectionActive, setGlobalDetectionActive] = useState(false);
   const [cameras, setCameras] = useState<CameraData[]>([
     { id: 1, name: 'Camera 1', isActive: false, detections: [], trafficCount: 0 },
     { id: 2, name: 'Camera 2', isActive: false, detections: [], trafficCount: 0 },
@@ -49,6 +50,14 @@ export const CameraGrid = () => {
     setCameras(prev => prev.map(camera => 
       camera.id === cameraId ? { ...camera, isActive } : camera
     ));
+  };
+
+  const startAllCameras = () => {
+    setGlobalDetectionActive(true);
+  };
+
+  const stopAllCameras = () => {
+    setGlobalDetectionActive(false);
   };
 
   const getHighestTrafficCamera = () => {
@@ -109,11 +118,36 @@ export const CameraGrid = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between text-sm text-purple-200">
-            <span>Highest Traffic: {highestTrafficCamera.name} ({highestTrafficCamera.trafficCount} detections)</span>
-            <Badge variant="secondary" className="bg-purple-600 text-white">
-              Active Cameras: {cameras.filter(c => c.isActive).length}/4
-            </Badge>
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-purple-200">
+              <span>Highest Traffic: {highestTrafficCamera.name} ({highestTrafficCamera.trafficCount} detections)</span>
+            </div>
+            <div className="flex items-center gap-4">
+              <Badge variant="secondary" className="bg-purple-600 text-white">
+                Active Cameras: {cameras.filter(c => c.isActive).length}/4
+              </Badge>
+              {viewMode === 'grid' && (
+                <div className="flex gap-2">
+                  {!globalDetectionActive ? (
+                    <Button 
+                      onClick={startAllCameras}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      Start All Cameras
+                    </Button>
+                  ) : (
+                    <Button 
+                      onClick={stopAllCameras}
+                      variant="destructive"
+                    >
+                      <Square className="h-4 w-4 mr-2" />
+                      Stop All Cameras
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -140,6 +174,7 @@ export const CameraGrid = () => {
           </CardHeader>
           <CardContent>
             <WebcamCapture
+              globalDetectionActive={globalDetectionActive}
               onDetectionUpdate={(predictions) => handleDetectionUpdate(fullscreenCamera, predictions)}
               onStatusChange={(isActive) => handleStatusChange(fullscreenCamera, isActive)}
             />
@@ -174,19 +209,11 @@ export const CameraGrid = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-2">
-                {camera.isActive ? (
-                  <WebcamCapture
-                    onDetectionUpdate={(predictions) => handleDetectionUpdate(camera.id, predictions)}
-                    onStatusChange={(isActive) => handleStatusChange(camera.id, isActive)}
-                  />
-                ) : (
-                  <div className="bg-black rounded-lg h-32 flex items-center justify-center">
-                    <div className="text-center text-gray-400">
-                      <Camera className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">No Camera Detection</p>
-                    </div>
-                  </div>
-                )}
+                <WebcamCapture
+                  globalDetectionActive={globalDetectionActive}
+                  onDetectionUpdate={(predictions) => handleDetectionUpdate(camera.id, predictions)}
+                  onStatusChange={(isActive) => handleStatusChange(camera.id, isActive)}
+                />
                 <div className="mt-2 text-xs text-purple-200">
                   Detections: {camera.detections.length} | Total Traffic: {camera.trafficCount}
                 </div>
