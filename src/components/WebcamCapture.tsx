@@ -1,4 +1,3 @@
-
 import { useRef, useEffect, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -20,11 +19,12 @@ interface WebcamCaptureProps {
   globalDetectionActive: boolean;
   onDetectionUpdate: (predictions: Detection[]) => void;
   onStatusChange: (isActive: boolean) => void;
+  cameraId?: number;
 }
 
 const API_BASE_URL = "http://localhost:8000";
 
-export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStatusChange }: WebcamCaptureProps) => {
+export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStatusChange, cameraId = 1 }: WebcamCaptureProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -41,6 +41,8 @@ export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStat
   const [processingTime, setProcessingTime] = useState<number>(0);
 
   const [recentDetections, setRecentDetections] = useState<{ detection: Detection; timestamp: number }[]>([]);
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>("");
 
   // Handle global detection state changes
   useEffect(() => {
@@ -50,6 +52,28 @@ export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStat
       stopWebcam();
     }
   }, [globalDetectionActive]);
+
+  // Get available cameras on component mount
+  useEffect(() => {
+    const getCameras = async () => {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        setAvailableCameras(videoDevices);
+        
+        // Set default camera based on cameraId prop
+        if (videoDevices.length > 0) {
+          const defaultCamera = videoDevices[Math.min(cameraId - 1, videoDevices.length - 1)];
+          setSelectedCameraId(defaultCamera.deviceId);
+        }
+      } catch (err) {
+        console.error("Error getting cameras:", err);
+        setError("Failed to get available cameras");
+      }
+    };
+
+    getCameras();
+  }, [cameraId]);
 
   const checkApiConnection = async () => {
     setIsCheckingApi(true);
@@ -81,14 +105,22 @@ export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStat
       return;
     }
 
+    if (!selectedCameraId) {
+      setError("Please select a camera first");
+      return;
+    }
+
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
+      const constraints = {
         video: {
+          deviceId: selectedCameraId ? { exact: selectedCameraId } : undefined,
           width: { ideal: 640 },
           height: { ideal: 480 },
           frameRate: { ideal: 30 }
         }
-      });
+      };
+
+      const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
 
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
@@ -103,7 +135,7 @@ export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStat
       const interval = setInterval(performDetection, 500);
       setDetectionInterval(interval);
     } catch (err) {
-      setError("Failed to access webcam. Please ensure camera permissions are granted.");
+      setError("Failed to access webcam. Please ensure camera permissions are granted and the selected camera is available.");
       console.error("Webcam error:", err);
     }
   };
@@ -122,6 +154,21 @@ export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStat
     setIsStreaming(false);
     onStatusChange(false);
     setRecentDetections([]);
+  };
+
+  const handleCameraChange = (deviceId: string) => {
+    setSelectedCameraId(deviceId);
+    
+    // If currently streaming, restart with new camera
+    if (isStreaming) {
+      stopWebcam();
+      setTimeout(() => {
+        setSelectedCameraId(deviceId);
+        if (globalDetectionActive) {
+          startWebcam();
+        }
+      }, 100);
+    }
   };
 
   const performDetection = async () => {
@@ -284,6 +331,33 @@ export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStat
         </Alert>
       )}
 
+      {/* Camera Selection */}
+      <Card className="bg-black/40 backdrop-blur-md border-white/20">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center">
+            <Camera className="h-5 w-5 mr-2" />
+            Camera Selection
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div>
+            <label className="text-white text-sm mb-2 block">Select Camera:</label>
+            <Select value={selectedCameraId} onValueChange={handleCameraChange}>
+              <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                <SelectValue placeholder="Choose a camera..." />
+              </SelectTrigger>
+              <SelectContent>
+                {availableCameras.map((camera, index) => (
+                  <SelectItem key={camera.deviceId} value={camera.deviceId}>
+                    {camera.label || `Camera ${index + 1}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="bg-black/40 backdrop-blur-md border-white/20">
         <CardHeader>
           <CardTitle className="text-white flex items-center">
@@ -346,7 +420,7 @@ export const WebcamCapture = ({ globalDetectionActive, onDetectionUpdate, onStat
 
       <div className="flex gap-2">
         {!isStreaming ? (
-          <Button onClick={startWebcam} className="bg-green-600 hover:bg-green-700" disabled={!apiConnected}>
+          <Button onClick={startWebcam} className="bg-green-600 hover:bg-green-700" disabled={!apiConnected || !selectedCameraId}>
             <Play className="h-4 w-4 mr-2" />
             Start Detection
           </Button>

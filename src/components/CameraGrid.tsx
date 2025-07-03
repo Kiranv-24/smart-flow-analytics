@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,7 +37,6 @@ export const CameraGrid = () => {
   const handleDetectionUpdate = (cameraId: number, predictions: Detection[]) => {
     setCameras(prev => prev.map(camera => {
       if (camera.id === cameraId) {
-        // Check for emergency vehicles
         const hasEmergency = predictions.some(detection => 
           detection.class.toLowerCase().includes('ambulance') ||
           detection.class.toLowerCase().includes('emergency') ||
@@ -63,7 +61,6 @@ export const CameraGrid = () => {
         return { 
           ...camera, 
           isActive,
-          // Reset emergency status when camera stops
           hasEmergencyVehicle: isActive ? camera.hasEmergencyVehicle : false,
           detections: isActive ? camera.detections : []
         };
@@ -74,7 +71,6 @@ export const CameraGrid = () => {
 
   const startAllCameras = () => {
     setGlobalDetectionActive(true);
-    // Reset all camera data when starting
     setCameras(prev => prev.map(camera => ({
       ...camera,
       trafficCount: 0,
@@ -85,7 +81,6 @@ export const CameraGrid = () => {
 
   const stopAllCameras = () => {
     setGlobalDetectionActive(false);
-    // Reset all camera data when stopping
     setCameras(prev => prev.map(camera => ({
       ...camera,
       isActive: false,
@@ -104,19 +99,15 @@ export const CameraGrid = () => {
   };
 
   const getTrafficSignalColor = (camera: CameraData) => {
-    // If camera is not active, always red
     if (!camera.isActive) {
       return 'border-red-500';
     }
 
-    // Check if any active camera has emergency vehicle
     const emergencyCamera = cameras.find(cam => cam.isActive && cam.hasEmergencyVehicle);
     
     if (emergencyCamera) {
-      // Emergency override: green for emergency lane, red for others
       return camera.hasEmergencyVehicle ? 'border-green-500' : 'border-red-500';
     } else {
-      // Normal traffic management: green for highest traffic, red for others
       const highestTrafficCamera = getHighestTrafficCamera();
       return (highestTrafficCamera && camera.id === highestTrafficCamera.id) ? 'border-green-500' : 'border-red-500';
     }
@@ -286,6 +277,7 @@ export const CameraGrid = () => {
               globalDetectionActive={globalDetectionActive}
               onDetectionUpdate={(predictions) => handleDetectionUpdate(fullscreenCamera, predictions)}
               onStatusChange={(isActive) => handleStatusChange(fullscreenCamera, isActive)}
+              cameraId={fullscreenCamera}
             />
           </CardContent>
         </Card>
@@ -328,6 +320,7 @@ export const CameraGrid = () => {
                   globalDetectionActive={globalDetectionActive}
                   onDetectionUpdate={(predictions) => handleDetectionUpdate(camera.id, predictions)}
                   onStatusChange={(isActive) => handleStatusChange(camera.id, isActive)}
+                  cameraId={camera.id}
                 />
                 <div className="mt-2 text-xs text-purple-200">
                   Vehicles: {camera.detections.length} | Total: {camera.trafficCount}
