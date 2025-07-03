@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WebcamCapture } from "./WebcamCapture";
-import { Maximize, Minimize, Camera, Grid3X3, Monitor, Play, Square } from "lucide-react";
+import { Maximize, Minimize, Camera, Grid3X3, Monitor, Play, Square, AlertTriangle } from "lucide-react";
 
 interface Detection {
   class: string;
@@ -21,6 +21,7 @@ interface CameraData {
   isActive: boolean;
   detections: Detection[];
   trafficCount: number;
+  hasEmergencyVehicle: boolean;
 }
 
 export const CameraGrid = () => {
@@ -28,22 +29,32 @@ export const CameraGrid = () => {
   const [fullscreenCamera, setFullscreenCamera] = useState<number | null>(null);
   const [globalDetectionActive, setGlobalDetectionActive] = useState(false);
   const [cameras, setCameras] = useState<CameraData[]>([
-    { id: 1, name: 'Camera 1', isActive: false, detections: [], trafficCount: 0 },
-    { id: 2, name: 'Camera 2', isActive: false, detections: [], trafficCount: 0 },
-    { id: 3, name: 'Camera 3', isActive: false, detections: [], trafficCount: 0 },
-    { id: 4, name: 'Camera 4', isActive: false, detections: [], trafficCount: 0 },
+    { id: 1, name: 'Lane 1 - North', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false },
+    { id: 2, name: 'Lane 2 - South', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false },
+    { id: 3, name: 'Lane 3 - East', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false },
+    { id: 4, name: 'Lane 4 - West', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false },
   ]);
 
   const handleDetectionUpdate = (cameraId: number, predictions: Detection[]) => {
-    setCameras(prev => prev.map(camera => 
-      camera.id === cameraId 
-        ? { 
-            ...camera, 
-            detections: predictions,
-            trafficCount: camera.trafficCount + predictions.length
-          }
-        : camera
-    ));
+    setCameras(prev => prev.map(camera => {
+      if (camera.id === cameraId) {
+        // Check for emergency vehicles
+        const hasEmergency = predictions.some(detection => 
+          detection.class.toLowerCase().includes('ambulance') ||
+          detection.class.toLowerCase().includes('emergency') ||
+          detection.class.toLowerCase().includes('fire') ||
+          detection.class.toLowerCase().includes('police')
+        );
+        
+        return { 
+          ...camera, 
+          detections: predictions,
+          trafficCount: camera.trafficCount + predictions.length,
+          hasEmergencyVehicle: hasEmergency
+        };
+      }
+      return camera;
+    }));
   };
 
   const handleStatusChange = (cameraId: number, isActive: boolean) => {
@@ -66,6 +77,24 @@ export const CameraGrid = () => {
     );
   };
 
+  const getTrafficSignalColor = (camera: CameraData) => {
+    // Check if any camera has emergency vehicle
+    const hasAnyEmergency = cameras.some(cam => cam.hasEmergencyVehicle);
+    
+    if (hasAnyEmergency) {
+      // Emergency override: green for emergency lane, red for others
+      return camera.hasEmergencyVehicle ? 'border-green-500' : 'border-red-500';
+    } else {
+      // Normal traffic management: green for highest traffic, red for others
+      const highestTrafficCamera = getHighestTrafficCamera();
+      return camera.id === highestTrafficCamera.id ? 'border-green-500' : 'border-red-500';
+    }
+  };
+
+  const getEmergencyLanes = () => {
+    return cameras.filter(camera => camera.hasEmergencyVehicle);
+  };
+
   const toggleFullscreen = (cameraId: number) => {
     if (fullscreenCamera === cameraId) {
       setFullscreenCamera(null);
@@ -82,6 +111,7 @@ export const CameraGrid = () => {
   };
 
   const highestTrafficCamera = getHighestTrafficCamera();
+  const emergencyLanes = getEmergencyLanes();
 
   return (
     <div className="space-y-4">
@@ -91,7 +121,7 @@ export const CameraGrid = () => {
           <CardTitle className="text-white flex items-center justify-between">
             <div className="flex items-center">
               <Monitor className="h-5 w-5 mr-2" />
-              Camera Control Panel
+              Traffic Management Control Panel
             </div>
             <div className="flex gap-2">
               <Button
@@ -111,7 +141,7 @@ export const CameraGrid = () => {
                   size="sm"
                   className="bg-white/10 border-white/20 text-white hover:bg-white/20"
                 >
-                  Cam {num}
+                  Lane {num}
                 </Button>
               ))}
             </div>
@@ -119,12 +149,19 @@ export const CameraGrid = () => {
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between">
-            <div className="text-sm text-purple-200">
-              <span>Highest Traffic: {highestTrafficCamera.name} ({highestTrafficCamera.trafficCount} detections)</span>
+            <div className="text-sm text-purple-200 space-y-1">
+              {emergencyLanes.length > 0 ? (
+                <div className="flex items-center text-red-400">
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                  <span>EMERGENCY OVERRIDE ACTIVE - Lane(s): {emergencyLanes.map(lane => lane.name).join(', ')}</span>
+                </div>
+              ) : (
+                <span>Normal Traffic Mode - Highest Traffic: {highestTrafficCamera.name} ({highestTrafficCamera.trafficCount} vehicles)</span>
+              )}
             </div>
             <div className="flex items-center gap-4">
               <Badge variant="secondary" className="bg-purple-600 text-white">
-                Active Cameras: {cameras.filter(c => c.isActive).length}/4
+                Active: {cameras.filter(c => c.isActive).length}/4
               </Badge>
               {viewMode === 'grid' && (
                 <div className="flex gap-2">
@@ -152,14 +189,38 @@ export const CameraGrid = () => {
         </CardContent>
       </Card>
 
+      {/* Traffic Signal Status */}
+      <Card className="bg-black/40 backdrop-blur-md border-white/20">
+        <CardHeader>
+          <CardTitle className="text-white text-sm">Traffic Signal Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-4 gap-4">
+            {cameras.map((camera) => (
+              <div key={camera.id} className="flex items-center space-x-2">
+                <div className={`w-4 h-4 rounded-full ${camera.hasEmergencyVehicle || (!emergencyLanes.length && camera.id === highestTrafficCamera.id) ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span className="text-white text-xs">{camera.name}</span>
+                {camera.hasEmergencyVehicle && <AlertTriangle className="h-3 w-3 text-red-400" />}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Camera Display */}
       {viewMode === 'single' && fullscreenCamera ? (
-        <Card className="bg-black/40 backdrop-blur-md border-white/20">
+        <Card className={`bg-black/40 backdrop-blur-md border-4 ${getTrafficSignalColor(cameras.find(c => c.id === fullscreenCamera)!)}`}>
           <CardHeader>
             <CardTitle className="text-white flex items-center justify-between">
               <div className="flex items-center">
                 <Camera className="h-5 w-5 mr-2" />
-                Camera {fullscreenCamera} - Fullscreen
+                {cameras.find(c => c.id === fullscreenCamera)?.name} - Fullscreen
+                {cameras.find(c => c.id === fullscreenCamera)?.hasEmergencyVehicle && (
+                  <Badge className="ml-2 bg-red-600 text-white">
+                    <AlertTriangle className="h-3 w-3 mr-1" />
+                    EMERGENCY
+                  </Badge>
+                )}
               </div>
               <Button
                 onClick={() => toggleFullscreen(fullscreenCamera)}
@@ -183,7 +244,7 @@ export const CameraGrid = () => {
       ) : (
         <div className="grid grid-cols-2 gap-4">
           {cameras.map((camera) => (
-            <Card key={camera.id} className="bg-black/40 backdrop-blur-md border-white/20">
+            <Card key={camera.id} className={`bg-black/40 backdrop-blur-md border-4 ${getTrafficSignalColor(camera)}`}>
               <CardHeader>
                 <CardTitle className="text-white flex items-center justify-between text-sm">
                   <div className="flex items-center">
@@ -195,6 +256,12 @@ export const CameraGrid = () => {
                     >
                       {camera.isActive ? 'Active' : 'Inactive'}
                     </Badge>
+                    {camera.hasEmergencyVehicle && (
+                      <Badge className="ml-1 bg-red-600 text-white">
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        EMERGENCY
+                      </Badge>
+                    )}
                   </div>
                   <div className="flex gap-1">
                     <Button
@@ -215,7 +282,8 @@ export const CameraGrid = () => {
                   onStatusChange={(isActive) => handleStatusChange(camera.id, isActive)}
                 />
                 <div className="mt-2 text-xs text-purple-200">
-                  Detections: {camera.detections.length} | Total Traffic: {camera.trafficCount}
+                  Vehicles: {camera.detections.length} | Total: {camera.trafficCount}
+                  {camera.hasEmergencyVehicle && <span className="text-red-400 ml-2">⚠️ Emergency Vehicle Present</span>}
                 </div>
               </CardContent>
             </Card>
