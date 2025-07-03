@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { WebcamCapture } from "./WebcamCapture";
 import { Maximize, Minimize, Camera, Grid3X3, Monitor, Play, Square, AlertTriangle } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface Detection {
   class: string;
@@ -21,18 +22,48 @@ interface CameraData {
   detections: Detection[];
   trafficCount: number;
   hasEmergencyVehicle: boolean;
+  selectedDeviceId: string;
 }
 
 export const CameraGrid = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'single'>('grid');
   const [fullscreenCamera, setFullscreenCamera] = useState<number | null>(null);
   const [globalDetectionActive, setGlobalDetectionActive] = useState(false);
+  const [availableDevices, setAvailableDevices] = useState<MediaDeviceInfo[]>([]);
   const [cameras, setCameras] = useState<CameraData[]>([
-    { id: 1, name: 'Lane 1 - North', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false },
-    { id: 2, name: 'Lane 2 - South', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false },
-    { id: 3, name: 'Lane 3 - East', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false },
-    { id: 4, name: 'Lane 4 - West', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false },
+    { id: 1, name: 'Lane 1 - North', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false, selectedDeviceId: '' },
+    { id: 2, name: 'Lane 2 - South', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false, selectedDeviceId: '' },
+    { id: 3, name: 'Lane 3 - East', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false, selectedDeviceId: '' },
+    { id: 4, name: 'Lane 4 - West', isActive: false, detections: [], trafficCount: 0, hasEmergencyVehicle: false, selectedDeviceId: '' },
   ]);
+
+  // Get available camera devices
+  useEffect(() => {
+    const getDevices = async () => {
+      try {
+        // First get user media permission
+        await navigator.mediaDevices.getUserMedia({ video: true });
+        
+        // Then enumerate devices
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter(device => device.kind === 'videoinput');
+        
+        setAvailableDevices(videoDevices);
+        
+        // Set first camera as default for all lanes if not already set
+        if (videoDevices.length > 0) {
+          setCameras(prev => prev.map(camera => ({
+            ...camera,
+            selectedDeviceId: camera.selectedDeviceId || videoDevices[0].deviceId
+          })));
+        }
+      } catch (error) {
+        console.error('Error enumerating devices:', error);
+      }
+    };
+
+    getDevices();
+  }, []);
 
   const handleDetectionUpdate = (cameraId: number, predictions: Detection[]) => {
     setCameras(prev => prev.map(camera => {
@@ -69,10 +100,17 @@ export const CameraGrid = () => {
     }));
   };
 
+  const handleCameraSelect = (cameraId: number, deviceId: string) => {
+    setCameras(prev => prev.map(camera => 
+      camera.id === cameraId ? { ...camera, selectedDeviceId: deviceId } : camera
+    ));
+  };
+
   const startAllCameras = () => {
     setGlobalDetectionActive(true);
     setCameras(prev => prev.map(camera => ({
       ...camera,
+      isActive: true,
       trafficCount: 0,
       detections: [],
       hasEmergencyVehicle: false
@@ -274,10 +312,10 @@ export const CameraGrid = () => {
           </CardHeader>
           <CardContent>
             <WebcamCapture
+              deviceId={cameras.find(c => c.id === fullscreenCamera)?.selectedDeviceId}
               globalDetectionActive={globalDetectionActive}
               onDetectionUpdate={(predictions) => handleDetectionUpdate(fullscreenCamera, predictions)}
               onStatusChange={(isActive) => handleStatusChange(fullscreenCamera, isActive)}
-              cameraId={fullscreenCamera}
             />
           </CardContent>
         </Card>
@@ -304,6 +342,26 @@ export const CameraGrid = () => {
                     )}
                   </div>
                   <div className="flex gap-1">
+                    <Select
+                      value={camera.selectedDeviceId}
+                      onValueChange={(value) => handleCameraSelect(camera.id, value)}
+                      disabled={camera.isActive}
+                    >
+                      <SelectTrigger className="w-[180px] bg-white/10 border-white/20 text-white hover:bg-white/20">
+                        <SelectValue placeholder="Select camera" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-800 text-white border-white/20">
+                        {availableDevices.map((device) => (
+                          <SelectItem 
+                            key={device.deviceId} 
+                            value={device.deviceId}
+                            disabled={!device.deviceId}
+                          >
+                            {device.label || `Camera ${device.deviceId.slice(0, 8)}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <Button
                       onClick={() => toggleFullscreen(camera.id)}
                       variant="outline"
@@ -317,10 +375,10 @@ export const CameraGrid = () => {
               </CardHeader>
               <CardContent className="p-2">
                 <WebcamCapture
+                  deviceId={camera.selectedDeviceId}
                   globalDetectionActive={globalDetectionActive}
                   onDetectionUpdate={(predictions) => handleDetectionUpdate(camera.id, predictions)}
                   onStatusChange={(isActive) => handleStatusChange(camera.id, isActive)}
-                  cameraId={camera.id}
                 />
                 <div className="mt-2 text-xs text-purple-200">
                   Vehicles: {camera.detections.length} | Total: {camera.trafficCount}
