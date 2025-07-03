@@ -58,41 +58,72 @@ export const CameraGrid = () => {
   };
 
   const handleStatusChange = (cameraId: number, isActive: boolean) => {
-    setCameras(prev => prev.map(camera => 
-      camera.id === cameraId ? { ...camera, isActive } : camera
-    ));
+    setCameras(prev => prev.map(camera => {
+      if (camera.id === cameraId) {
+        return { 
+          ...camera, 
+          isActive,
+          // Reset emergency status when camera stops
+          hasEmergencyVehicle: isActive ? camera.hasEmergencyVehicle : false,
+          detections: isActive ? camera.detections : []
+        };
+      }
+      return camera;
+    }));
   };
 
   const startAllCameras = () => {
     setGlobalDetectionActive(true);
+    // Reset all camera data when starting
+    setCameras(prev => prev.map(camera => ({
+      ...camera,
+      trafficCount: 0,
+      detections: [],
+      hasEmergencyVehicle: false
+    })));
   };
 
   const stopAllCameras = () => {
     setGlobalDetectionActive(false);
+    // Reset all camera data when stopping
+    setCameras(prev => prev.map(camera => ({
+      ...camera,
+      isActive: false,
+      detections: [],
+      hasEmergencyVehicle: false
+    })));
   };
 
   const getHighestTrafficCamera = () => {
-    return cameras.reduce((prev, current) => 
+    const activeCameras = cameras.filter(camera => camera.isActive);
+    if (activeCameras.length === 0) return null;
+    
+    return activeCameras.reduce((prev, current) => 
       current.trafficCount > prev.trafficCount ? current : prev
     );
   };
 
   const getTrafficSignalColor = (camera: CameraData) => {
-    // Check if any camera has emergency vehicle
-    const hasAnyEmergency = cameras.some(cam => cam.hasEmergencyVehicle);
+    // If camera is not active, always red
+    if (!camera.isActive) {
+      return 'border-red-500';
+    }
+
+    // Check if any active camera has emergency vehicle
+    const emergencyCamera = cameras.find(cam => cam.isActive && cam.hasEmergencyVehicle);
     
-    if (hasAnyEmergency) {
+    if (emergencyCamera) {
       // Emergency override: green for emergency lane, red for others
       return camera.hasEmergencyVehicle ? 'border-green-500' : 'border-red-500';
     } else {
       // Normal traffic management: green for highest traffic, red for others
       const highestTrafficCamera = getHighestTrafficCamera();
-      return camera.id === highestTrafficCamera.id ? 'border-green-500' : 'border-red-500';
+      return (highestTrafficCamera && camera.id === highestTrafficCamera.id) ? 'border-green-500' : 'border-red-500';
     }
   };
 
   const getEmergencyLanes = () => {
-    return cameras.filter(camera => camera.hasEmergencyVehicle);
+    return cameras.filter(camera => camera.isActive && camera.hasEmergencyVehicle);
   };
 
   const toggleFullscreen = (cameraId: number) => {
@@ -112,6 +143,7 @@ export const CameraGrid = () => {
 
   const highestTrafficCamera = getHighestTrafficCamera();
   const emergencyLanes = getEmergencyLanes();
+  const activeCameraCount = cameras.filter(c => c.isActive).length;
 
   return (
     <div className="space-y-4">
@@ -155,13 +187,15 @@ export const CameraGrid = () => {
                   <AlertTriangle className="h-4 w-4 mr-2" />
                   <span>EMERGENCY OVERRIDE ACTIVE - Lane(s): {emergencyLanes.map(lane => lane.name).join(', ')}</span>
                 </div>
+              ) : activeCameraCount > 0 ? (
+                <span>Normal Traffic Mode - {highestTrafficCamera ? `Highest Traffic: ${highestTrafficCamera.name} (${highestTrafficCamera.trafficCount} vehicles)` : 'Monitoring Traffic...'}</span>
               ) : (
-                <span>Normal Traffic Mode - Highest Traffic: {highestTrafficCamera.name} ({highestTrafficCamera.trafficCount} vehicles)</span>
+                <span>All Cameras Stopped - Ready to Start Traffic Management</span>
               )}
             </div>
             <div className="flex items-center gap-4">
               <Badge variant="secondary" className="bg-purple-600 text-white">
-                Active: {cameras.filter(c => c.isActive).length}/4
+                Active: {activeCameraCount}/4
               </Badge>
               {viewMode === 'grid' && (
                 <div className="flex gap-2">
@@ -192,18 +226,32 @@ export const CameraGrid = () => {
       {/* Traffic Signal Status */}
       <Card className="bg-black/40 backdrop-blur-md border-white/20">
         <CardHeader>
-          <CardTitle className="text-white text-sm">Traffic Signal Status</CardTitle>
+          <CardTitle className="text-white text-sm">Traffic Light Status (Real-time Signal Control)</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-4 gap-4">
-            {cameras.map((camera) => (
-              <div key={camera.id} className="flex items-center space-x-2">
-                <div className={`w-4 h-4 rounded-full ${camera.hasEmergencyVehicle || (!emergencyLanes.length && camera.id === highestTrafficCamera.id) ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span className="text-white text-xs">{camera.name}</span>
-                {camera.hasEmergencyVehicle && <AlertTriangle className="h-3 w-3 text-red-400" />}
-              </div>
-            ))}
+            {cameras.map((camera) => {
+              const signalColor = getTrafficSignalColor(camera);
+              const isGreen = signalColor.includes('green');
+              
+              return (
+                <div key={camera.id} className="flex items-center space-x-2">
+                  <div className={`w-4 h-4 rounded-full ${isGreen ? 'bg-green-500' : 'bg-red-500'} ${!camera.isActive ? 'opacity-50' : ''}`}></div>
+                  <span className={`text-white text-xs ${!camera.isActive ? 'opacity-50' : ''}`}>
+                    {camera.name} {isGreen ? '🟢' : '🔴'}
+                  </span>
+                  {camera.hasEmergencyVehicle && <AlertTriangle className="h-3 w-3 text-red-400" />}
+                </div>
+              );
+            })}
           </div>
+          {emergencyLanes.length > 0 && (
+            <div className="mt-2 p-2 bg-red-900/30 rounded border border-red-500">
+              <div className="text-red-400 text-xs font-bold">
+                🚨 EMERGENCY VEHICLE DETECTED: {emergencyLanes.map(lane => lane.name).join(', ')} - PRIORITY OVERRIDE ACTIVE
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -284,6 +332,7 @@ export const CameraGrid = () => {
                 <div className="mt-2 text-xs text-purple-200">
                   Vehicles: {camera.detections.length} | Total: {camera.trafficCount}
                   {camera.hasEmergencyVehicle && <span className="text-red-400 ml-2">⚠️ Emergency Vehicle Present</span>}
+                  {!camera.isActive && <span className="text-gray-400 ml-2">• Camera Stopped</span>}
                 </div>
               </CardContent>
             </Card>
