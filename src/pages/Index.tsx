@@ -3,20 +3,13 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { WebcamCapture } from "@/components/WebcamCapture";
+import { CameraGrid } from "@/components/CameraGrid";
 import { DetectionStats } from "@/components/DetectionStats";
 import { ModelInfo } from "@/components/ModelInfo";
 import { Camera, Activity, BarChart3, Settings } from "lucide-react";
 
 const Index = () => {
-  const [isDetecting, setIsDetecting] = useState(false);
-  const [detectionData, setDetectionData] = useState<any[]>([]);
   const [totalDetections, setTotalDetections] = useState(0);
-
-  const handleDetectionUpdate = (predictions: any[]) => {
-    setDetectionData(predictions);
-    setTotalDetections(prev => prev + predictions.length);
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -29,39 +22,23 @@ const Index = () => {
                 <Camera className="h-6 w-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">Vehicle Detection System</h1>
-                <p className="text-purple-200 text-sm">Real-time Traffic Management & Analysis</p>
+                <h1 className="text-2xl font-bold text-white">Multi-Camera Vehicle Detection System</h1>
+                <p className="text-purple-200 text-sm">Real-time Traffic Management & Analysis - 4 Camera Grid</p>
               </div>
             </div>
             <Badge variant="secondary" className="bg-green-600 text-white">
               <Activity className="h-4 w-4 mr-1" />
-              {isDetecting ? "Active" : "Standby"}
+              Multi-Cam Active
             </Badge>
           </div>
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Video Feed */}
-          <div className="lg:col-span-2">
-            <Card className="bg-black/40 backdrop-blur-md border-white/20">
-              <CardHeader>
-                <CardTitle className="text-white flex items-center">
-                  <Camera className="h-5 w-5 mr-2" />
-                  Live Detection Feed
-                </CardTitle>
-                <CardDescription className="text-purple-200">
-                  Real-time vehicle detection and classification
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <WebcamCapture
-                  onDetectionUpdate={handleDetectionUpdate}
-                  onStatusChange={setIsDetecting}
-                />
-              </CardContent>
-            </Card>
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Main Camera Grid */}
+          <div className="lg:col-span-3">
+            <CameraGrid />
           </div>
 
           {/* Side Panel */}
@@ -69,18 +46,30 @@ const Index = () => {
             {/* Model Information */}
             <ModelInfo />
             
-            {/* Detection Statistics */}
-            <DetectionStats 
-              currentDetections={detectionData}
-              totalDetections={totalDetections}
-            />
+            {/* System Statistics */}
+            <Card className="bg-black/40 backdrop-blur-md border-white/20">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center">
+                  <BarChart3 className="h-5 w-5 mr-2" />
+                  System Stats
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="text-sm text-purple-200">
+                  <p>Multi-Camera Mode: 4-Split Screen</p>
+                  <p>Auto-Focus: Highest Traffic Camera</p>
+                  <p>Model: Roboflow 3.0 Object Detection</p>
+                  <p>Real-time Processing: Active</p>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Controls */}
             <Card className="bg-black/40 backdrop-blur-md border-white/20">
               <CardHeader>
                 <CardTitle className="text-white flex items-center">
                   <Settings className="h-5 w-5 mr-2" />
-                  Controls
+                  System Controls
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -89,11 +78,13 @@ const Index = () => {
                   variant="outline"
                   className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20"
                 >
-                  Reset Statistics
+                  Reset All Statistics
                 </Button>
                 <div className="text-sm text-purple-200">
-                  <p>FPS: Optimized for performance</p>
-                  <p>Model: Roboflow 3.0 Object Detection</p>
+                  <p>• Click Grid View for 4-camera layout</p>
+                  <p>• Click Cam 1-4 for single camera</p>
+                  <p>• Use maximize/minimize controls</p>
+                  <p>• System auto-highlights high traffic</p>
                 </div>
               </CardContent>
             </Card>
